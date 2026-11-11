@@ -46,7 +46,7 @@ const tripId = params.get('t');
 const demo = params.get('demo');
 const STALE_MS = 90 * 1000; // أكتر من دقيقة ونص = انقطاع
 
-const top = document.getElementById('top');
+const topEl = document.getElementById('top');
 const statusEl = document.getElementById('status');
 const subEl = document.getElementById('sub');
 const msgEl = document.getElementById('msg');
@@ -92,7 +92,7 @@ function tick(){
   if (!last) return;
   const age = Date.now() - last.updatedAt;
   const stale = age > STALE_MS;
-  top.className = stale ? 'warn' : 'ok';
+  topEl.className = stale ? 'warn' : 'ok';
   if (marker) marker.setStyle({fillColor: stale ? '#d9480f' : '#1b9e4b'});
   if (stale){
     statusEl.textContent = '⚠️ انقطع الاتصال منذ ' + ago(age);
