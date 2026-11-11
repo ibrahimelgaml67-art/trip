@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تتبع الرحلة</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--text:#1a1a1a;--muted:#667;--ok:#1b9e4b;--warn:#d9480f;}
+  @media (prefers-color-scheme:dark){:root{--bg:#111;--card:#1e1e1e;--text:#f2f2f2;--muted:#aaa;}}
+  html,body{height:100%;margin:0;font-family:system-ui,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--text)}
+  body{display:flex;flex-direction:column}
+  #top{padding:14px 16px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:1000}
+  #status{font-size:22px;font-weight:700}
+  #sub{font-size:17px;color:var(--muted);margin-top:4px}
+  #top.ok #status{color:var(--ok)}
+  #top.warn{background:#fff3e0}
+  #top.warn #status{color:var(--warn)}
+  @media (prefers-color-scheme:dark){#top.warn{background:#3a2412}}
+  #map{flex:1}
+  #msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
+       font-size:24px;font-weight:700;padding:30px;background:var(--bg);z-index:2000}
+</style>
+</head>
+<body>
+<div id="top"><div id="status">جاري التحميل...</div><div id="sub"></div></div>
+<div id="map"></div>
+<div id="msg"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDp-67JKVE03okhJisUxj0Xbmuba6ijb2A",
+  authDomain: "my-trip-8ed1c.firebaseapp.com",
+  databaseURL: "https://my-trip-8ed1c-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "my-trip-8ed1c",
+  storageBucket: "my-trip-8ed1c.firebasestorage.app",
+  messagingSenderId: "1041046332275",
+  appId: "1:1041046332275:web:e8d223cb60043eb327db06"
+};
+
+const params = new URLSearchParams(location.search);
+const tripId = params.get('t');
+const demo = params.get('demo');
+const STALE_MS = 90 * 1000; // أكتر من دقيقة ونص = انقطاع
+
+const top = document.getElementById('top');
+const statusEl = document.getElementById('status');
+const subEl = document.getElementById('sub');
+const msgEl = document.getElementById('msg');
+
+const map = L.map('map', {zoomControl: true}).setView([30.05, 31.23], 14);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+}).addTo(map);
+
+let marker = null, circle = null, last = null, first = true;
+
+function showMsg(t){ msgEl.textContent = t; msgEl.style.display = 'flex'; }
+function hideMsg(){ msgEl.style.display = 'none'; }
+
+function ago(ms){
+  const m = Math.floor(ms/60000);
+  if (m < 1) return 'أقل من دقيقة';
+  if (m === 1) return 'دقيقة';
+  if (m === 2) return 'دقيقتين';
+  if (m < 11) return m + ' دقايق';
+  if (m < 60) return m + ' دقيقة';
+  const h = Math.floor(m/60), r = m % 60;
+  return h + (h === 1 ? ' ساعة' : ' ساعات') + (r ? ' و' + r + ' دقيقة' : '');
+}
+
+function render(d){
+  if (!d){ showMsg('الرحلة دي مش موجودة أو خلصت'); return; }
+  if (d.expiresAt && Date.now() > d.expiresAt){ showMsg('اللينك ده انتهت صلاحيته'); return; }
+  hideMsg();
+  last = d;
+  const pos = [d.lat, d.lng];
+  if (!marker){
+    marker = L.circleMarker(pos, {radius:11, color:'#fff', weight:3, fillColor:'#1b9e4b', fillOpacity:1}).addTo(map);
+    circle = L.circle(pos, {radius: d.accuracy || 30, color:'#1b9e4b', weight:1, fillOpacity:.12}).addTo(map);
+  } else {
+    marker.setLatLng(pos); circle.setLatLng(pos); circle.setRadius(d.accuracy || 30);
+  }
+  if (first){ map.setView(pos, 16); first = false; } else { map.panTo(pos); }
+  tick();
+}
+
+function tick(){
+  if (!last) return;
+  const age = Date.now() - last.updatedAt;
+  const stale = age > STALE_MS;
+  top.className = stale ? 'warn' : 'ok';
+  if (marker) marker.setStyle({fillColor: stale ? '#d9480f' : '#1b9e4b'});
+  if (stale){
+    statusEl.textContent = '⚠️ انقطع الاتصال منذ ' + ago(age);
+    subEl.textContent = 'ده آخر مكان اتسجل';
+  } else {
+    statusEl.textContent = '🟢 الموقع متحدّث';
+    subEl.textContent = 'آخر تحديث من ' + ago(age);
+  }
+  if (last.expiresAt){
+    const left = last.expiresAt - Date.now();
+    if (left <= 0){ showMsg('اللينك ده انتهت صلاحيته'); }
+  }
+}
+setInterval(tick, 5000);
+
+if (demo){
+  // تجربة بدون إنترنت: نقطة بتتحرك لوحدها
+  let lat = 30.7865, lng = 31.0004; // طنطا
+  render({lat, lng, accuracy: 20, updatedAt: Date.now(), expiresAt: Date.now() + 3600000});
+  setInterval(() => {
+    lat += 0.0003; lng += 0.0002;
+    render({lat, lng, accuracy: 20, updatedAt: Date.now(), expiresAt: Date.now() + 3600000});
+  }, 3000);
+} else if (!tripId){
+  showMsg('اللينك ناقص. اطلب من إبراهيم يبعتلك اللينك تاني');
+} else {
+  firebase.initializeApp(firebaseConfig);
+  firebase.database().ref('trips/' + tripId).on('value',
+    snap => render(snap.val()),
+    err => showMsg('مش قادر أقرأ الرحلة دلوقتي')
+  );
+}
+</script>
+</body>
+</html>
